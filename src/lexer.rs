@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::error::Error;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -165,26 +167,34 @@ impl Iterator for TokenIterator<'_> {
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     #[test]
     fn test_lex() {
-        let input = r#"
-            label main
-            let x = 10
-            let y = 20
-            if x < y
-            then
-                print "x is less than y"
-            endif
-            while x < y
-            repeat
-                input x
-            endwhile
-            goto main
-        "#;
+        let input = r#"label main
+let x = 10
+let y = 20
+if x < y
+then
+print "x is less than y"
+endif
+while x < y
+repeat
+input x
+endwhile
+goto main"#;
 
         let tokens = lex(input).unwrap();
+
+        println!("Input Program:\n");
+
+        for line in input.lines() {
+            println!("{}", line);
+        }
+
+        println!("\nTokens:\n");
+
         for token in &tokens {
-            println!("{:?}", token);
+            println!("Token: {:?}", token);
         }
         assert_eq!(tokens.len(), 28);
     }

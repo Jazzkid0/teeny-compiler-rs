@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 
 // Parser for the following grammar:
 //
@@ -23,27 +24,13 @@ use std::iter::Peekable;
 #[derive(Debug, PartialEq)]
 pub enum AST {
     Program(Vec<Statement>),
-    Print(Box<Expression>),
-    If {
-        comparison: Comparison,
-        body: Vec<Statement>,
-    },
-    While {
-        comparison: Comparison,
-        body: Vec<Statement>,
-    },
-    Label(String),
-    Goto(String),
-    Let {
-        ident: String,
-        expression: Expression,
-    },
-    Input(String),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Statement {
-    Print(Box<Expression>),
+    // Make print allow for both strings and expressions
+    PrintString(String),
+    PrintExpression(Box<Expression>),
     If {
         comparison: Comparison,
         body: Vec<Statement>,
@@ -86,95 +73,111 @@ pub enum Expression {
 pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>> {
     let mut statements = vec![];
 
-    while let Some(token) = tokens.peek() {
-        match token {
-            Token::Print => {
-                let expression = parse_expression(tokens)?;
-                statements.push(Statement::Print(Box::new(expression)));
-            }
-            Token::If => {
-                let comparison = parse_comparison(tokens)?;
-                let mut body = vec![];
-                while let Some(token) = tokens.peek() {
-                    match token {
-                        Token::Endif => {
-                            tokens.next();
-                            break;
-                        }
-                        _ => {
-                            body.push(parse_statement(tokens)?);
-                        }
-                    }
-                }
-                statements.push(Statement::If {
-                    comparison,
-                    body,
-                });
-            }
-            Token::While => {
-                tokens.next();
-                let comparison = parse_comparison(tokens)?;
-                let mut body = vec![];
-                while let Some(token) = tokens.peek() {
-                    match token {
-                        Token::Endwhile => {
-                            tokens.next();
-                            break;
-                        }
-                        _ => {
-                            body.push(parse_statement(tokens)?);
-                        }
-                    }
-                }
-                statements.push(Statement::While {
-                    comparison,
-                    body,
-                });
-            }
-            Token::Label { name } => {
-                statements.push(Statement::Label(name.clone()));
-            }
-            Token::Goto => {
-                let name = match tokens.next() {
-                    Some(Token::Identifier { name }) => name,
-                    _ => return Err("Expected identifier after GOTO".into()),
-                };
-                statements.push(Statement::Goto(name));
-            }
-            Token::Let => {
-                let ident = match tokens.next() {
-                    Some(Token::Identifier { name }) => name,
-                    _ => return Err("Expected identifier after LET".into()),
-                };
-                match tokens.next() {
-                    Some(Token::Equal) => {}
-                    _ => return Err("Expected = after identifier in LET".into()),
-                }
-                let expression = parse_expression(tokens)?;
-                statements.push(Statement::Let {
-                    ident,
-                    expression,
-                });
-            }
-            Token::Input => {
-                tokens.next();
-                let ident = match tokens.next() {
-                    Some(Token::Identifier { name }) => name,
-                    _ => return Err("Expected identifier after INPUT".into()),
-                };
-                statements.push(Statement::Input(ident));
-            }
-            _ => return Err(format!("Unexpected token: {:?}", token).into()),
-        }
+    parse_ast(tokens.next().unwrap(), tokens, &mut statements)?;
+
+    while let Some(token) = tokens.peek().cloned() {
+        parse_ast(token, tokens, &mut statements)?;
     }
     Ok(AST::Program(statements))
+}
+
+fn parse_ast(token: Token, tokens: &mut Peekable<TokenIterator>, statements: &mut Vec<Statement>) -> Result<(), Box<dyn Error>> {
+    match token {
+        Token::Print => {
+            match tokens.peek() {
+                Some(Token::String { value }) => {
+                    let contents = value.clone();
+                    tokens.next();
+                    statements.push(Statement::PrintString(contents));
+                }
+                _ => {
+                    let expression = parse_expression(tokens)?;
+                    statements.push(Statement::PrintExpression(Box::new(expression)));
+                }
+            }
+        }
+        Token::If => {
+            let comparison = parse_comparison(tokens)?;
+            let mut body = vec![];
+            while let Some(token) = tokens.peek() {
+                match token {
+                    Token::Endif => {
+                        tokens.next();
+                        break;
+                    }
+                    _ => {
+                        body.push(parse_statement(tokens)?);
+                    }
+                }
+            }
+            statements.push(Statement::If {
+                comparison,
+                body,
+            });
+        }
+        Token::While => {
+            tokens.next();
+            let comparison = parse_comparison(tokens)?;
+            let mut body = vec![];
+            while let Some(token) = tokens.peek() {
+                match token {
+                    Token::Endwhile => {
+                        tokens.next();
+                        break;
+                    }
+                    _ => {
+                        body.push(parse_statement(tokens)?);
+                    }
+                }
+            }
+            statements.push(Statement::While {
+                comparison,
+                body,
+            });
+        }
+        Token::Label { name } => {
+            statements.push(Statement::Label(name.clone()));
+        }
+        Token::Goto => {
+            let name = match tokens.next() {
+                Some(Token::Identifier { name }) => name,
+                _ => return Err("Expected identifier after GOTO".into()),
+            };
+            statements.push(Statement::Goto(name));
+        }
+        Token::Let => {
+            let ident = match tokens.next() {
+                Some(Token::Identifier { name }) => name,
+                _ => return Err("Expected identifier after LET".into()),
+            };
+            match tokens.next() {
+                Some(Token::Equal) => {}
+                _ => return Err("Expected = after identifier in LET".into()),
+            }
+            let expression = parse_expression(tokens)?;
+            statements.push(Statement::Let {
+                ident,
+                expression,
+            });
+        }
+        Token::Input => {
+            tokens.next();
+            let ident = match tokens.next() {
+                Some(Token::Identifier { name }) => name,
+                _ => return Err("Expected identifier after INPUT".into()),
+            };
+            statements.push(Statement::Input(ident));
+        }
+        _ => return Err(format!("Unexpected token: {:?}", token).into()),
+    }
+    Ok(())
 }
 
 fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Box<dyn Error>> {
     match tokens.next() {
         Some(Token::Print) => {
             let expression = parse_expression(tokens)?;
-            Ok(Statement::Print(Box::new(expression)))
+            Ok(Statement::PrintExpression(Box::new(expression)))
         }
         Some(Token::If) => {
             let comparison = parse_comparison(tokens)?;
@@ -333,34 +336,47 @@ mod tests {
     use super::*;
     use crate::lexer::lex;
 
+    #[allow(dead_code)]
     #[test]
     fn test_parse() {
-        let input = r#"PRINT 1
-IF 1 == 1 THEN
-PRINT 2
-ENDIF
-WHILE 1 == 1 REPEAT
-PRINT 3
-ENDWHILE
-LABEL foo
-GOTO foo
-LET x = 1
-INPUT x
+        let input = r#"
+print "waddup"
+if 1 == 1 then
+print 2
+endif
+while 1 == 1 repeat
+print 3
+endwhile
+label foo
+goto foo
+let x = 1
+input x
 "#;
+
+        for line in input.lines() {
+            println!("{}", line);
+        }
+
         let tokens = lex(input).unwrap();
+
+        for token in tokens.clone() {
+            println!("Token: {:?}", token);
+        }
+
         let mut tokens = TokenIterator::new(&tokens).peekable();
         let ast = parse(&mut tokens).unwrap();
+
         assert_eq!(
             ast,
             AST::Program(vec![
-                Statement::Print(Box::new(Expression::Number(1))),
+                Statement::PrintString("waddup".to_string()),
                 Statement::If {
                     comparison: Comparison::Equal(Box::new(Expression::Number(1)), Box::new(Expression::Number(1))),
-                    body: vec![Statement::Print(Box::new(Expression::Number(2)))],
+                    body: vec![Statement::PrintExpression(Box::new(Expression::Number(2)))],
                 },
                 Statement::While {
                     comparison: Comparison::Equal(Box::new(Expression::Number(1)), Box::new(Expression::Number(1))),
-                    body: vec![Statement::Print(Box::new(Expression::Number(3)))],
+                    body: vec![Statement::PrintExpression(Box::new(Expression::Number(3)))],
                 },
                 Statement::Label("foo".to_string()),
                 Statement::Goto("foo".to_string()),
