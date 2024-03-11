@@ -72,97 +72,98 @@ pub enum Expression {
 
 pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>> {
     let mut statements = vec![];
-
-    while let Some(token) = tokens.peek().cloned() {
-        parse_ast(token, tokens, &mut statements)?;
-    }
-    Ok(AST::Program(statements))
-}
-
-fn parse_ast(
-    token: Token,
-    tokens: &mut Peekable<TokenIterator>,
-    statements: &mut Vec<Statement>,
-) -> Result<(), Box<dyn Error>> {
-    println!("AST--- Parsing token: {:?}", token);
-    match token {
-        Token::Print => match tokens.peek() {
-            Some(Token::String { value }) => {
-                let contents = value.clone();
+    while let Some(token) = tokens.next() {
+        println!("AST--- Parsing token: {:?}", token);
+        match token {
+            Token::Print => {
+                let next = tokens.next();
+                println!("AST--- Parsing print: {:?}", next);
+                match next {
+                    Some(Token::String { value }) => {
+                        let contents = value.clone();
+                        statements.push(Statement::PrintString(contents));
+                    }
+                    _ => {
+                        println!("AST--- Parsing print expression");
+                        let expression = parse_expression(tokens)?;
+                        statements.push(Statement::PrintExpression(Box::new(expression)));
+                    }
+                }
+            }
+            Token::If => {
+                let comparison = parse_comparison(tokens)?;
+                let mut body = vec![];
+                while let Some(token) = tokens.peek() {
+                    match token {
+                        Token::Endif => {
+                            tokens.next();
+                            break;
+                        }
+                        _ => {
+                            body.push(parse_statement(tokens)?);
+                        }
+                    }
+                }
+                statements.push(Statement::If { comparison, body });
+            }
+            Token::While => {
                 tokens.next();
-                statements.push(Statement::PrintString(contents));
+                let comparison = parse_comparison(tokens)?;
+                let mut body = vec![];
+                while let Some(token) = tokens.peek() {
+                    match token {
+                        Token::Endwhile => {
+                            tokens.next();
+                            break;
+                        }
+                        _ => {
+                            body.push(parse_statement(tokens)?);
+                        }
+                    }
+                }
+                statements.push(Statement::While { comparison, body });
+            }
+            Token::Label { name } => {
+                statements.push(Statement::Label(name.clone()));
+            }
+            Token::Goto => {
+                let name = match tokens.next() {
+                    Some(Token::Identifier { name }) => name,
+                    _ => return Err("Expected identifier after GOTO".into()),
+                };
+                statements.push(Statement::Goto(name));
+            }
+            Token::Let => {
+                let ident = match tokens.next() {
+                    Some(Token::Identifier { name }) => name,
+                    _ => return Err("Expected identifier after LET".into()),
+                };
+                match tokens.next() {
+                    Some(Token::Equal) => {}
+                    _ => return Err("Expected = after identifier in LET".into()),
+                }
+                tokens.next();
+                let expression = parse_expression(tokens)?;
+                statements.push(Statement::Let { ident, expression });
+            }
+            Token::Input => {
+                let ident = match tokens.next() {
+                    Some(Token::Identifier { name }) => name,
+                    _ => return Err("Expected identifier after INPUT".into()),
+                };
+                statements.push(Statement::Input(ident));
             }
             _ => {
-                let expression = parse_expression(tokens)?;
-                statements.push(Statement::PrintExpression(Box::new(expression)));
+                return Err(format!(
+                    "Unexpected token at AST: {:?}\nAST State: {:?}",
+                    token,
+                    AST::Program(statements)
+                )
+                .into())
             }
-        },
-        Token::If => {
-            let comparison = parse_comparison(tokens)?;
-            let mut body = vec![];
-            while let Some(token) = tokens.peek() {
-                match token {
-                    Token::Endif => {
-                        tokens.next();
-                        break;
-                    }
-                    _ => {
-                        body.push(parse_statement(tokens)?);
-                    }
-                }
-            }
-            statements.push(Statement::If { comparison, body });
         }
-        Token::While => {
-            tokens.next();
-            let comparison = parse_comparison(tokens)?;
-            let mut body = vec![];
-            while let Some(token) = tokens.peek() {
-                match token {
-                    Token::Endwhile => {
-                        tokens.next();
-                        break;
-                    }
-                    _ => {
-                        body.push(parse_statement(tokens)?);
-                    }
-                }
-            }
-            statements.push(Statement::While { comparison, body });
-        }
-        Token::Label { name } => {
-            statements.push(Statement::Label(name.clone()));
-        }
-        Token::Goto => {
-            let name = match tokens.next() {
-                Some(Token::Identifier { name }) => name,
-                _ => return Err("Expected identifier after GOTO".into()),
-            };
-            statements.push(Statement::Goto(name));
-        }
-        Token::Let => {
-            let ident = match tokens.next() {
-                Some(Token::Identifier { name }) => name,
-                _ => return Err("Expected identifier after LET".into()),
-            };
-            match tokens.next() {
-                Some(Token::Equal) => {}
-                _ => return Err("Expected = after identifier in LET".into()),
-            }
-            let expression = parse_expression(tokens)?;
-            statements.push(Statement::Let { ident, expression });
-        }
-        Token::Input => {
-            tokens.next();
-            let ident = match tokens.next() {
-                Some(Token::Identifier { name }) => name,
-                _ => return Err("Expected identifier after INPUT".into()),
-            };
-            statements.push(Statement::Input(ident));
-        }
-        _ => return Err(format!("Unexpected token: {:?}", token).into()),
     }
-    Ok(())
+    Ok(AST::Program(statements))
 }
 
 fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Box<dyn Error>> {
@@ -215,7 +216,7 @@ fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Bo
             let name = match tokens.next() {
                 Some(Token::Identifier { name }) => name,
                 _ => {
-                    println!("Unexpected token: {:?}", tokens.peek());
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
                     return Err("Expected identifier after GOTO".into());
                 }
             };
@@ -225,14 +226,14 @@ fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Bo
             let ident = match tokens.next() {
                 Some(Token::Identifier { name }) => name,
                 _ => {
-                    println!("Unexpected token: {:?}", tokens.peek());
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
                     return Err("Expected identifier after LET".into());
                 }
             };
             match tokens.next() {
                 Some(Token::Equal) => {}
                 _ => {
-                    println!("Unexpected token: {:?}", tokens.peek());
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
                     return Err("Expected = after identifier in LET".into());
                 }
             }
@@ -243,15 +244,15 @@ fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Bo
             let ident = match tokens.next() {
                 Some(Token::Identifier { name }) => name,
                 _ => {
-                    println!("Unexpected token: {:?}", tokens.peek());
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
                     return Err("Expected identifier after INPUT".into());
                 }
             };
             Ok(Statement::Input(ident))
         }
         _ => {
-            println!("Unexpected token: {:?}", tokens.peek());
-            Err("Unexpected token".into())
+            println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
+            Err("Unexpected token at root".into())
         }
     }
 }
@@ -260,36 +261,40 @@ fn parse_comparison(tokens: &mut Peekable<TokenIterator>) -> Result<Comparison, 
     let expression = parse_expression(tokens)?;
     let token = match tokens.next() {
         Some(token) => token,
-        None => return Err("Unexpected end of input".into()),
+        None => return Err("Unexpected end of input at COMPARISON".into()),
     };
     let expression2 = parse_expression(tokens)?;
-    match token {
-        Token::EqualEqual => Ok(Comparison::Equal(
+    println!(
+        "Expression1: {:?}, Expression2: {:?}, Token: {:?}",
+        expression, expression2, token
+    );
+    match tokens.next() {
+        Some(Token::EqualEqual) => Ok(Comparison::Equal(
             Box::new(expression),
             Box::new(expression2),
         )),
-        Token::NotEqual => Ok(Comparison::NotEqual(
+        Some(Token::NotEqual) => Ok(Comparison::NotEqual(
             Box::new(expression),
             Box::new(expression2),
         )),
-        Token::GreaterThan => Ok(Comparison::GreaterThan(
+        Some(Token::GreaterThan) => Ok(Comparison::GreaterThan(
             Box::new(expression),
             Box::new(expression2),
         )),
-        Token::GreaterThanEqual => Ok(Comparison::GreaterThanEqual(
+        Some(Token::GreaterThanEqual) => Ok(Comparison::GreaterThanEqual(
             Box::new(expression),
             Box::new(expression2),
         )),
-        Token::LessThan => Ok(Comparison::LessThan(
+        Some(Token::LessThan) => Ok(Comparison::LessThan(
             Box::new(expression),
             Box::new(expression2),
         )),
-        Token::LessThanEqual => Ok(Comparison::LessThanEqual(
+        Some(Token::LessThanEqual) => Ok(Comparison::LessThanEqual(
             Box::new(expression),
             Box::new(expression2),
         )),
         _ => {
-            println!("Unexpected token: {:?}", token);
+            println!("Unexpected token in COMPARISON: {:?}", token);
             Err("Expected comparison operator".into())
         }
     }
@@ -297,7 +302,8 @@ fn parse_comparison(tokens: &mut Peekable<TokenIterator>) -> Result<Comparison, 
 
 fn parse_expression(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
     let mut expression = parse_term(tokens)?;
-    while let Some(token) = tokens.peek() {
+    while let Some(token) = tokens.next() {
+        println!("EXPRESSION--- Parsing token: {:?}", token);
         match token {
             Token::Plus => {
                 tokens.next();
@@ -316,16 +322,15 @@ fn parse_expression(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, 
 }
 
 fn parse_term(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
+    println!("TERM--- Parsing token: {:?}", tokens.peek());
     let mut expression = parse_unary(tokens)?;
     while let Some(token) = tokens.peek() {
         match token {
             Token::Asterisk => {
-                tokens.next();
                 let unary = parse_unary(tokens)?;
                 expression = Expression::Multiply(Box::new(expression), Box::new(unary));
             }
             Token::Slash => {
-                tokens.next();
                 let unary = parse_unary(tokens)?;
                 expression = Expression::Divide(Box::new(expression), Box::new(unary));
             }
@@ -336,7 +341,8 @@ fn parse_term(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dy
 }
 
 fn parse_unary(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
-    match tokens.next() {
+    println!("UNARY--- Parsing token: {:?}", tokens.peek());
+    match tokens.peek() {
         Some(Token::Plus) => {
             let primary = parse_primary(tokens)?;
             Ok(Expression::UnaryPlus(Box::new(primary)))
@@ -354,7 +360,7 @@ fn parse_primary(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box
         Some(Token::Number { value }) => Ok(Expression::Number(value)),
         Some(Token::Identifier { name }) => Ok(Expression::Ident(name)),
         _ => {
-            println!("Unexpected token: {:?}", tokens.peek());
+            println!("Unexpected token at PRIMARY {:?}", tokens.peek());
             Err("Expected number or identifier".into())
         }
     }
