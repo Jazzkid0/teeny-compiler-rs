@@ -1,6 +1,6 @@
 #![allow(dead_code, unused_imports)]
 
-use crate::parser::{self, Statement};
+use crate::parser::*;
 use std::error::Error;
 
 // Emit C code based on the AST we have generated.
@@ -8,6 +8,7 @@ use std::error::Error;
 // Things we need to keep track of:
 // Variables
 // Labels, and whether they have been GOTOed
+// Indentation? Formatting isn't necessary, but it would be nice
 // Maybe the scope, might call all vars globally for now
 //
 // With these, we can move through the AST and generate C code.
@@ -24,28 +25,58 @@ struct Label {
     used: bool,
 }
 
-fn headerline() -> String {
-    "#include <stdio.h>\nint main(void){\n".to_string()
-}
-
-fn footerline() -> String {
-    "return 0;\n}\n".to_string()
-}
-
 fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn Error>> {
-    let mut codelines: Vec<String> = Vec::new();
+    let mut code_header: Vec<String> = Vec::new();
+    let mut code_body: Vec<String> = Vec::new();
 
-    codelines.push(headerline());
+    code_header.push("#include <stdio.h>".to_string());
+    code_header.push("int main(void){\n".to_string());
 
     for statement in statements {
         match statement {
-            _ => codelines.push("/* unimplemented statement */".to_string()),
+            Statement::PrintString(string) => code_body.push(format!("printf(\"{}\\n\");", string)),
+            Statement::PrintExpression(expression) => match *expression {
+                Expression::SingleTerm(term) => match *term {
+                    Term::SingleUnary(unary) => match *unary {
+                        Unary::Plus(primary) => {
+                            code_body.push("/* unimplemented unary plus */".to_string())
+                        }
+                        Unary::Minus(primary) => {
+                            code_body.push("/* unimplemented unary minus */".to_string())
+                        }
+                    },
+                    Term::WithTail(unary, tailunaries) => {
+                        code_body.push("/* unimplemented term with tail */".to_string())
+                    }
+                },
+                Expression::WithTail(term, tailterms) => {
+                    code_body.push("/* unimplemented expression with tail */".to_string())
+                }
+            },
+            Statement::If { comparison, body } => {
+                code_body.push("/* unimplemented if statement */".to_string())
+            }
+            Statement::While { comparison, body } => {
+                code_body.push("/* unimplemented while statement */".to_string())
+            }
+            Statement::Label(ident) => code_body.push("/* unimplemented label */".to_string()),
+            Statement::Goto(ident) => code_body.push("/* unimplemented goto */".to_string()),
+            Statement::Let { ident, expression } => {
+                code_body.push("/* unimplemented let */".to_string())
+            }
+            Statement::Input(ident) => code_body.push("/* unimplemented input */".to_string()),
         }
     }
 
-    codelines.push(footerline());
+    code_body.push("return 0;".to_string());
+    code_body.push("}".to_string());
 
-    Ok(codelines)
+    let mut output: Vec<String> = Vec::new();
+
+    output.append(&mut code_header);
+    output.append(&mut code_body);
+
+    Ok(output)
 }
 
 #[cfg(test)]
@@ -58,9 +89,11 @@ mod tests {
         assert_eq!(
             result,
             vec![
-                "#include <stdio.h>\nint main(void){\n".to_string(),
-                "/* unimplemented statement */".to_string(),
-                "return 0;\n}\n".to_string()
+                "#include <stdio.h>".to_string(),
+                "int main(void){\n".to_string(),
+                "printf(\"waddup\\n\");".to_string(),
+                "return 0;".to_string(),
+                "}".to_string(),
             ]
         );
     }
