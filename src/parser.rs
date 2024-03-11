@@ -94,10 +94,14 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
                 let comparison = parse_comparison(tokens)?;
                 let mut body = vec![];
                 while let Some(token) = tokens.peek() {
+                    println!("AST--- Parsing if body: {:?}", token);
                     match token {
                         Token::Endif => {
                             tokens.next();
                             break;
+                        }
+                        Token::Then => {
+                            tokens.next();
                         }
                         _ => {
                             body.push(parse_statement(tokens)?);
@@ -167,11 +171,12 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
 }
 
 fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Box<dyn Error>> {
-    match tokens.next() {
+    let token = tokens.next();
+    println!("STATEMENT--- Parsing token: {:?}", token);
+    match token {
         Some(Token::Print) => match tokens.peek() {
             Some(Token::String { value }) => {
                 let contents = value.clone();
-                tokens.next();
                 Ok(Statement::PrintString(contents))
             }
             _ => {
@@ -258,17 +263,17 @@ fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Bo
 }
 
 fn parse_comparison(tokens: &mut Peekable<TokenIterator>) -> Result<Comparison, Box<dyn Error>> {
+    println!("COMPARISON--- Parsing token: {:?}", tokens.peek());
     let expression = parse_expression(tokens)?;
-    let token = match tokens.next() {
-        Some(token) => token,
-        None => return Err("Unexpected end of input at COMPARISON".into()),
-    };
+    println!("COMPARISON--- Got Comparator: {:?}", tokens.peek());
+    let comparator = tokens.next();
+    println!("COMPARISON--- Parsing token: {:?}", tokens.peek());
     let expression2 = parse_expression(tokens)?;
     println!(
-        "Expression1: {:?}, Expression2: {:?}, Token: {:?}",
-        expression, expression2, token
+        "COMPARISON: {:?} {:?} {:?}",
+        expression, comparator, expression2
     );
-    match tokens.next() {
+    match comparator {
         Some(Token::EqualEqual) => Ok(Comparison::Equal(
             Box::new(expression),
             Box::new(expression2),
@@ -293,16 +298,13 @@ fn parse_comparison(tokens: &mut Peekable<TokenIterator>) -> Result<Comparison, 
             Box::new(expression),
             Box::new(expression2),
         )),
-        _ => {
-            println!("Unexpected token in COMPARISON: {:?}", token);
-            Err("Expected comparison operator".into())
-        }
+        _ => Err("Expected comparison operator".into()),
     }
 }
 
 fn parse_expression(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
     let mut expression = parse_term(tokens)?;
-    while let Some(token) = tokens.next() {
+    while let Some(token) = tokens.peek() {
         println!("EXPRESSION--- Parsing token: {:?}", token);
         match token {
             Token::Plus => {
