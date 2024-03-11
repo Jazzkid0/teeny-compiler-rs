@@ -1,7 +1,7 @@
 #[allow(dead_code)]
+use std::{error::Error, fs};
 
-use std::{fs, error::Error};
-
+mod emitter;
 mod lexer;
 mod parser;
 
