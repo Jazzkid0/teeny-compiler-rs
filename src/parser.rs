@@ -166,13 +166,13 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
                 }
                 statements.push(Statement::While { comparison, body });
             }
-            Token::Label => {
-                println!("AST--- Parsing label");
+            Token::Label { name } => {
+                println!("AST--- Parsing label with name: {:?}", name);
                 let name = match tokens.next() {
                     Some(Token::Identifier { name }) => name,
                     _ => return Err("Expected identifier after LABEL".into()),
                 };
-                statements.push(Statement::Label(name.clone()));
+                statements.push(Statement::Label(name));
             }
             Token::Goto => {
                 println!("AST--- Parsing goto");
@@ -192,7 +192,6 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
                     Some(Token::Equal) => {}
                     _ => return Err("Expected = after identifier in LET".into()),
                 }
-                tokens.next();
                 let expression = parse_expression(tokens)?;
                 statements.push(Statement::Let { ident, expression });
             }
