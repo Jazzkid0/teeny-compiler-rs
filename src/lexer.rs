@@ -75,7 +75,9 @@ pub fn lex(input: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                 'a'..='z' | 'A'..='Z' | '_' => {
                     let mut name = c.to_string();
 
-                    while let Some('a'..='z') | Some('A'..='Z') | Some('0'..='9') | Some('_') = chars.peek() {
+                    while let Some('a'..='z') | Some('A'..='Z') | Some('0'..='9') | Some('_') =
+                        chars.peek()
+                    {
                         name.push(chars.next().unwrap());
                     }
 
