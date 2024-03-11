@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::error::Error;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,7 +75,9 @@ pub fn lex(input: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                 'a'..='z' | 'A'..='Z' | '_' => {
                     let mut name = c.to_string();
 
-                    while let Some('a'..='z') | Some('A'..='Z') | Some('0'..='9') | Some('_') = chars.peek() {
+                    while let Some('a'..='z') | Some('A'..='Z') | Some('0'..='9') | Some('_') =
+                        chars.peek()
+                    {
                         name.push(chars.next().unwrap());
                     }
 
@@ -165,26 +169,34 @@ impl Iterator for TokenIterator<'_> {
 mod tests {
     use super::*;
 
+    #[allow(dead_code)]
     #[test]
     fn test_lex() {
-        let input = r#"
-            label main
-            let x = 10
-            let y = 20
-            if x < y
-            then
-                print "x is less than y"
-            endif
-            while x < y
-            repeat
-                input x
-            endwhile
-            goto main
-        "#;
+        let input = r#"label main
+let x = 10
+let y = 20
+if x < y
+then
+print "x is less than y"
+endif
+while x < y
+repeat
+input x
+endwhile
+goto main"#;
 
         let tokens = lex(input).unwrap();
+
+        println!("Input Program:\n");
+
+        for line in input.lines() {
+            println!("{}", line);
+        }
+
+        println!("\nTokens:\n");
+
         for token in &tokens {
-            println!("{:?}", token);
+            println!("Token: {:?}", token);
         }
         assert_eq!(tokens.len(), 28);
     }

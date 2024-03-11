@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 
 // Parser for the following grammar:
 //
@@ -16,34 +17,20 @@
 // primary ::= number | ident
 // nl ::= '\n'+
 
-use crate::lexer::{TokenIterator, Token};
+use crate::lexer::{Token, TokenIterator};
 use std::error::Error;
 use std::iter::Peekable;
 
 #[derive(Debug, PartialEq)]
 pub enum AST {
     Program(Vec<Statement>),
-    Print(Box<Expression>),
-    If {
-        comparison: Comparison,
-        body: Vec<Statement>,
-    },
-    While {
-        comparison: Comparison,
-        body: Vec<Statement>,
-    },
-    Label(String),
-    Goto(String),
-    Let {
-        ident: String,
-        expression: Expression,
-    },
-    Input(String),
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Statement {
-    Print(Box<Expression>),
+    // Make print allow for both strings and expressions
+    PrintString(String),
+    PrintExpression(Box<Expression>),
     If {
         comparison: Comparison,
         body: Vec<Statement>,
@@ -73,68 +60,122 @@ pub enum Comparison {
 
 #[derive(Debug, PartialEq)]
 pub enum Expression {
-    Add(Box<Expression>, Box<Expression>),
-    Subtract(Box<Expression>, Box<Expression>),
-    Multiply(Box<Expression>, Box<Expression>),
-    Divide(Box<Expression>, Box<Expression>),
-    UnaryMinus(Box<Expression>),
-    UnaryPlus(Box<Expression>),
+    SingleTerm(Box<Term>),
+    WithTail(Box<Term>, Box<ExpressionTail>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ExpressionTail {
+    Tail(Vec<TailTerm>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TailTerm {
+    Add(Box<Term>),
+    Subtract(Box<Term>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Term {
+    SingleUnary(Box<Unary>),
+    WithTail(Box<Unary>, Box<TermTail>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TermTail {
+    Tail(Vec<TailUnary>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TailUnary {
+    Multiply(Box<Unary>),
+    Divide(Box<Unary>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Unary {
+    Plus(Box<Primary>),
+    Minus(Box<Primary>),
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Primary {
     Number(i32),
     Ident(String),
 }
 
 pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>> {
     let mut statements = vec![];
-
-    while let Some(token) = tokens.peek() {
+    while let Some(token) = tokens.next() {
+        println!("AST--- Parsing token: {:?}", token);
         match token {
             Token::Print => {
-                let expression = parse_expression(tokens)?;
-                statements.push(Statement::Print(Box::new(expression)));
+                let next = tokens.next();
+                println!("AST--- Parsing print: {:?}", next);
+                match next {
+                    Some(Token::String { value }) => {
+                        let contents = value.clone();
+                        statements.push(Statement::PrintString(contents));
+                    }
+                    _ => {
+                        println!("AST--- Parsing print expression");
+                        let expression = parse_expression(tokens)?;
+                        statements.push(Statement::PrintExpression(Box::new(expression)));
+                    }
+                }
             }
             Token::If => {
+                println!("AST--- Parsing if");
                 let comparison = parse_comparison(tokens)?;
                 let mut body = vec![];
                 while let Some(token) = tokens.peek() {
+                    println!("AST--- Parsing if body: {:?}", token);
                     match token {
                         Token::Endif => {
                             tokens.next();
                             break;
                         }
+                        Token::Then => {
+                            tokens.next();
+                        }
                         _ => {
                             body.push(parse_statement(tokens)?);
                         }
                     }
                 }
-                statements.push(Statement::If {
-                    comparison,
-                    body,
-                });
+                statements.push(Statement::If { comparison, body });
             }
             Token::While => {
-                tokens.next();
+                println!("AST--- Parsing while");
                 let comparison = parse_comparison(tokens)?;
                 let mut body = vec![];
                 while let Some(token) = tokens.peek() {
+                    println!("AST--- Parsing while body: {:?}", token);
                     match token {
                         Token::Endwhile => {
                             tokens.next();
                             break;
                         }
+                        Token::Repeat => {
+                            tokens.next();
+                        }
                         _ => {
                             body.push(parse_statement(tokens)?);
                         }
                     }
                 }
-                statements.push(Statement::While {
-                    comparison,
-                    body,
-                });
+                statements.push(Statement::While { comparison, body });
             }
             Token::Label { name } => {
-                statements.push(Statement::Label(name.clone()));
+                println!("AST--- Parsing label with name: {:?}", name);
+                let name = match tokens.next() {
+                    Some(Token::Identifier { name }) => name,
+                    _ => return Err("Expected identifier after LABEL".into()),
+                };
+                statements.push(Statement::Label(name));
             }
             Token::Goto => {
+                println!("AST--- Parsing goto");
                 let name = match tokens.next() {
                     Some(Token::Identifier { name }) => name,
                     _ => return Err("Expected identifier after GOTO".into()),
@@ -142,6 +183,7 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
                 statements.push(Statement::Goto(name));
             }
             Token::Let => {
+                println!("AST--- Parsing let");
                 let ident = match tokens.next() {
                     Some(Token::Identifier { name }) => name,
                     _ => return Err("Expected identifier after LET".into()),
@@ -151,31 +193,43 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
                     _ => return Err("Expected = after identifier in LET".into()),
                 }
                 let expression = parse_expression(tokens)?;
-                statements.push(Statement::Let {
-                    ident,
-                    expression,
-                });
+                statements.push(Statement::Let { ident, expression });
             }
             Token::Input => {
-                tokens.next();
+                println!("AST--- Parsing input");
                 let ident = match tokens.next() {
                     Some(Token::Identifier { name }) => name,
                     _ => return Err("Expected identifier after INPUT".into()),
                 };
                 statements.push(Statement::Input(ident));
             }
-            _ => return Err(format!("Unexpected token: {:?}", token).into()),
+            _ => {
+                return Err(format!(
+                    "Unexpected token at AST: {:?}\nAST State: {:?}",
+                    token,
+                    AST::Program(statements)
+                )
+                .into())
+            }
         }
     }
     Ok(AST::Program(statements))
 }
 
 fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Box<dyn Error>> {
-    match tokens.next() {
-        Some(Token::Print) => {
-            let expression = parse_expression(tokens)?;
-            Ok(Statement::Print(Box::new(expression)))
-        }
+    let token = tokens.next();
+    println!("STATEMENT--- Parsing token: {:?}", token);
+    match token {
+        Some(Token::Print) => match tokens.peek() {
+            Some(Token::String { value }) => {
+                let contents = value.clone();
+                Ok(Statement::PrintString(contents))
+            }
+            _ => {
+                let expression = parse_expression(tokens)?;
+                Ok(Statement::PrintExpression(Box::new(expression)))
+            }
+        },
         Some(Token::If) => {
             let comparison = parse_comparison(tokens)?;
             let mut body = vec![];
@@ -190,10 +244,7 @@ fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Bo
                     }
                 }
             }
-            Ok(Statement::If {
-                comparison,
-                body,
-            })
+            Ok(Statement::If { comparison, body })
         }
         Some(Token::While) => {
             let comparison = parse_comparison(tokens)?;
@@ -209,122 +260,185 @@ fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Bo
                     }
                 }
             }
-            Ok(Statement::While {
-                comparison,
-                body,
-            })
+            Ok(Statement::While { comparison, body })
         }
         Some(Token::Label { name }) => Ok(Statement::Label(name.clone())),
         Some(Token::Goto) => {
             let name = match tokens.next() {
                 Some(Token::Identifier { name }) => name,
-                _ => return Err("Expected identifier after GOTO".into()),
+                _ => {
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
+                    return Err("Expected identifier after GOTO".into());
+                }
             };
             Ok(Statement::Goto(name))
         }
         Some(Token::Let) => {
             let ident = match tokens.next() {
                 Some(Token::Identifier { name }) => name,
-                _ => return Err("Expected identifier after LET".into()),
+                _ => {
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
+                    return Err("Expected identifier after LET".into());
+                }
             };
             match tokens.next() {
                 Some(Token::Equal) => {}
-                _ => return Err("Expected = after identifier in LET".into()),
+                _ => {
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
+                    return Err("Expected = after identifier in LET".into());
+                }
             }
             let expression = parse_expression(tokens)?;
-            Ok(Statement::Let {
-                ident,
-                expression,
-            })
+            Ok(Statement::Let { ident, expression })
         }
         Some(Token::Input) => {
             let ident = match tokens.next() {
                 Some(Token::Identifier { name }) => name,
-                _ => return Err("Expected identifier after INPUT".into()),
+                _ => {
+                    println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
+                    return Err("Expected identifier after INPUT".into());
+                }
             };
             Ok(Statement::Input(ident))
         }
-        _ => Err("Unexpected token".into()),
+        _ => {
+            println!("Unexpected token in STATEMENT: {:?}", tokens.peek());
+            Err("Unexpected token at root".into())
+        }
     }
 }
 
 fn parse_comparison(tokens: &mut Peekable<TokenIterator>) -> Result<Comparison, Box<dyn Error>> {
+    println!("COMPARISON--- Parsing token: {:?}", tokens.peek());
     let expression = parse_expression(tokens)?;
-    let token = match tokens.next() {
-        Some(token) => token,
-        None => return Err("Unexpected end of input".into()),
-    };
+    println!("COMPARISON--- Got Comparator: {:?}", tokens.peek());
+    let comparator = tokens.next();
+    println!("COMPARISON--- Parsing token: {:?}", tokens.peek());
     let expression2 = parse_expression(tokens)?;
-    match token {
-        Token::EqualEqual => Ok(Comparison::Equal(Box::new(expression), Box::new(expression2))),
-        Token::NotEqual => Ok(Comparison::NotEqual(Box::new(expression), Box::new(expression2))),
-        Token::GreaterThan => Ok(Comparison::GreaterThan(Box::new(expression), Box::new(expression2))),
-        Token::GreaterThanEqual => Ok(Comparison::GreaterThanEqual(Box::new(expression), Box::new(expression2))),
-        Token::LessThan => Ok(Comparison::LessThan(Box::new(expression), Box::new(expression2))),
-        Token::LessThanEqual => Ok(Comparison::LessThanEqual(Box::new(expression), Box::new(expression2))),
+    println!(
+        "COMPARISON: {:?} {:?} {:?}",
+        expression, comparator, expression2
+    );
+    match comparator {
+        Some(Token::EqualEqual) => Ok(Comparison::Equal(
+            Box::new(expression),
+            Box::new(expression2),
+        )),
+        Some(Token::NotEqual) => Ok(Comparison::NotEqual(
+            Box::new(expression),
+            Box::new(expression2),
+        )),
+        Some(Token::GreaterThan) => Ok(Comparison::GreaterThan(
+            Box::new(expression),
+            Box::new(expression2),
+        )),
+        Some(Token::GreaterThanEqual) => Ok(Comparison::GreaterThanEqual(
+            Box::new(expression),
+            Box::new(expression2),
+        )),
+        Some(Token::LessThan) => Ok(Comparison::LessThan(
+            Box::new(expression),
+            Box::new(expression2),
+        )),
+        Some(Token::LessThanEqual) => Ok(Comparison::LessThanEqual(
+            Box::new(expression),
+            Box::new(expression2),
+        )),
         _ => Err("Expected comparison operator".into()),
     }
 }
 
 fn parse_expression(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
-    let mut expression = parse_term(tokens)?;
-    while let Some(token) = tokens.peek() {
-        match token {
-            Token::Plus => {
-                tokens.next();
-                let term = parse_term(tokens)?;
-                expression = Expression::Add(Box::new(expression), Box::new(term));
+    println!("EXPRESSION--- Parsing token: {:?}", tokens.peek());
+    let initialterm = parse_term(tokens)?;
+    if tokens.peek() == Some(&Token::Plus) || tokens.peek() == Some(&Token::Minus) {
+        let mut tailterms = Vec::new();
+        while let Some(token) = tokens.peek() {
+            println!("EXPRESSION--- Parsing tail token: {:?}", token);
+            match token {
+                Token::Plus => {
+                    tokens.next();
+                    let tailterm = parse_term(tokens)?;
+                    tailterms.push(TailTerm::Add(Box::new(tailterm)));
+                }
+                Token::Minus => {
+                    tokens.next();
+                    let term = parse_term(tokens)?;
+                    tailterms.push(TailTerm::Subtract(Box::new(term)));
+                }
+                _ => break,
             }
-            Token::Minus => {
-                tokens.next();
-                let term = parse_term(tokens)?;
-                expression = Expression::Subtract(Box::new(expression), Box::new(term));
-            }
-            _ => break,
         }
+        Ok(Expression::WithTail(
+            Box::new(initialterm),
+            Box::new(ExpressionTail::Tail(tailterms)),
+        ))
+    } else {
+        Ok(Expression::SingleTerm(Box::new(initialterm)))
     }
-    Ok(expression)
 }
 
-fn parse_term(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
-    let mut expression = parse_unary(tokens)?;
-    while let Some(token) = tokens.peek() {
-        match token {
-            Token::Asterisk => {
-                tokens.next();
-                let unary = parse_unary(tokens)?;
-                expression = Expression::Multiply(Box::new(expression), Box::new(unary));
+fn parse_term(tokens: &mut Peekable<TokenIterator>) -> Result<Term, Box<dyn Error>> {
+    println!("TERM--- Parsing token: {:?}", tokens.peek());
+    let initialunary = parse_unary(tokens)?;
+    if tokens.peek() == Some(&Token::Asterisk) || tokens.peek() == Some(&Token::Slash) {
+        let mut tailunaries = Vec::new();
+        while let Some(token) = tokens.peek() {
+            println!("TERM--- Parsing tail token: {:?}", token);
+            match token {
+                Token::Asterisk => {
+                    tokens.next();
+                    let tailunary = parse_unary(tokens)?;
+                    tailunaries.push(TailUnary::Multiply(Box::new(tailunary)));
+                }
+                Token::Slash => {
+                    tokens.next();
+                    let tailunary = parse_unary(tokens)?;
+                    tailunaries.push(TailUnary::Divide(Box::new(tailunary)));
+                }
+                _ => break,
             }
-            Token::Slash => {
-                tokens.next();
-                let unary = parse_unary(tokens)?;
-                expression = Expression::Divide(Box::new(expression), Box::new(unary));
-            }
-            _ => break,
         }
+        Ok(Term::WithTail(
+            Box::new(initialunary),
+            Box::new(TermTail::Tail(tailunaries)),
+        ))
+    } else {
+        Ok(Term::SingleUnary(Box::new(initialunary)))
     }
-    Ok(expression)
 }
 
-fn parse_unary(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
-    match tokens.next() {
+fn parse_unary(tokens: &mut Peekable<TokenIterator>) -> Result<Unary, Box<dyn Error>> {
+    println!("UNARY--- Parsing token: {:?}", tokens.peek());
+    let unary = tokens.peek();
+    match unary {
         Some(Token::Plus) => {
+            tokens.next();
             let primary = parse_primary(tokens)?;
-            Ok(Expression::UnaryPlus(Box::new(primary)))
+            Ok(Unary::Plus(Box::new(primary)))
         }
         Some(Token::Minus) => {
+            tokens.next();
             let primary = parse_primary(tokens)?;
-            Ok(Expression::UnaryMinus(Box::new(primary)))
+            Ok(Unary::Minus(Box::new(primary)))
         }
-        _ => parse_primary(tokens),
+        _ => {
+            let primary = parse_primary(tokens)?;
+            Ok(Unary::Plus(Box::new(primary)))
+        }
     }
 }
 
-fn parse_primary(tokens: &mut Peekable<TokenIterator>) -> Result<Expression, Box<dyn Error>> {
-    match tokens.next() {
-        Some(Token::Number { value }) => Ok(Expression::Number(value)),
-        Some(Token::Identifier { name }) => Ok(Expression::Ident(name)),
-        _ => Err("Expected number or identifier".into()),
+fn parse_primary(tokens: &mut Peekable<TokenIterator>) -> Result<Primary, Box<dyn Error>> {
+    println!("PRIMARY--- Parsing token: {:?}", tokens.peek());
+    let primary = tokens.next();
+    match primary {
+        Some(Token::Number { value }) => Ok(Primary::Number(value)),
+        Some(Token::Identifier { name }) => Ok(Primary::Ident(name)),
+        _ => {
+            println!("Unexpected token at PRIMARY {:?}", tokens.peek());
+            Err("Expected number or identifier".into())
+        }
     }
 }
 
@@ -333,42 +447,75 @@ mod tests {
     use super::*;
     use crate::lexer::lex;
 
+    #[allow(dead_code)]
     #[test]
     fn test_parse() {
-        let input = r#"PRINT 1
-IF 1 == 1 THEN
-PRINT 2
-ENDIF
-WHILE 1 == 1 REPEAT
-PRINT 3
-ENDWHILE
-LABEL foo
-GOTO foo
-LET x = 1
-INPUT x
+        let input = r#"
+print "waddup"
+if 1 == 1 then
+print 2
+endif
+while 1 == 1 repeat
+print 3
+endwhile
+label foo
+goto foo
+let x = 1
+input x
 "#;
+
         let tokens = lex(input).unwrap();
+
+        for token in tokens.clone() {
+            println!("Token: {:?}", token);
+        }
+
         let mut tokens = TokenIterator::new(&tokens).peekable();
         let ast = parse(&mut tokens).unwrap();
+
         assert_eq!(
             ast,
             AST::Program(vec![
-                Statement::Print(Box::new(Expression::Number(1))),
+                Statement::PrintString("waddup".to_string()),
                 Statement::If {
-                    comparison: Comparison::Equal(Box::new(Expression::Number(1)), Box::new(Expression::Number(1))),
-                    body: vec![Statement::Print(Box::new(Expression::Number(2)))],
+                    comparison: Comparison::Equal(
+                        Box::new(Expression::SingleTerm(Box::new(Term::SingleUnary(
+                            Box::new(Unary::Plus(Box::new(Primary::Number(1))))
+                        )))),
+                        Box::new(Expression::SingleTerm(Box::new(Term::SingleUnary(
+                            Box::new(Unary::Plus(Box::new(Primary::Number(1))))
+                        ))))
+                    ),
+                    body: vec![Statement::PrintExpression(Box::new(
+                        Expression::SingleTerm(Box::new(Term::SingleUnary(Box::new(Unary::Plus(
+                            Box::new(Primary::Number(2))
+                        )))))
+                    ))]
                 },
                 Statement::While {
-                    comparison: Comparison::Equal(Box::new(Expression::Number(1)), Box::new(Expression::Number(1))),
-                    body: vec![Statement::Print(Box::new(Expression::Number(3)))],
+                    comparison: Comparison::Equal(
+                        Box::new(Expression::SingleTerm(Box::new(Term::SingleUnary(
+                            Box::new(Unary::Plus(Box::new(Primary::Number(1))))
+                        )))),
+                        Box::new(Expression::SingleTerm(Box::new(Term::SingleUnary(
+                            Box::new(Unary::Plus(Box::new(Primary::Number(1))))
+                        ))))
+                    ),
+                    body: vec![Statement::PrintExpression(Box::new(
+                        Expression::SingleTerm(Box::new(Term::SingleUnary(Box::new(Unary::Plus(
+                            Box::new(Primary::Number(3))
+                        )))))
+                    ))]
                 },
                 Statement::Label("foo".to_string()),
                 Statement::Goto("foo".to_string()),
                 Statement::Let {
                     ident: "x".to_string(),
-                    expression: Expression::Number(1),
+                    expression: Expression::SingleTerm(Box::new(Term::SingleUnary(Box::new(
+                        Unary::Plus(Box::new(Primary::Number(1)))
+                    ))))
                 },
-                Statement::Input("x".to_string()),
+                Statement::Input("x".to_string())
             ])
         );
     }
