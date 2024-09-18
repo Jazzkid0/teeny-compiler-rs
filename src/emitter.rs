@@ -38,7 +38,7 @@ fn print_unary(unary: Unary) -> String {
     }
 }
 
-fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn Error>> {
+pub fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn Error>> {
     let mut code_header: Vec<String> = Vec::new();
     let mut code_body: Vec<String> = Vec::new();
 
@@ -68,25 +68,25 @@ fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn Error
                             }
                         },
                     },
-                    Term::WithTail(unary, tailunaries) => {}
+                    Term::WithTail(_unary, _tailunaries) => {}
                 },
-                Expression::WithTail(term, tailterms) => {
+                Expression::WithTail(_term, _tailterms) => {
 
                     code_body.push("/* unimplemented expression with tail */".to_string())
                 }
             },
-            Statement::If { comparison, body } => {
+            Statement::If { comparison: _, body: _ } => {
                 code_body.push("/* unimplemented if statement */".to_string())
             }
-            Statement::While { comparison, body } => {
+            Statement::While { comparison: _, body: _ } => {
                 code_body.push("/* unimplemented while statement */".to_string())
             }
-            Statement::Label(ident) => code_body.push("/* unimplemented label */".to_string()),
-            Statement::Goto(ident) => code_body.push("/* unimplemented goto */".to_string()),
-            Statement::Let { ident, expression } => {
+            Statement::Label(_ident) => code_body.push("/* unimplemented label */".to_string()),
+            Statement::Goto(_ident) => code_body.push("/* unimplemented goto */".to_string()),
+            Statement::Let { ident: _, expression: _ } => {
                 code_body.push("/* unimplemented let */".to_string())
             }
-            Statement::Input(ident) => code_body.push("/* unimplemented input */".to_string()),
+            Statement::Input(_ident) => code_body.push("/* unimplemented input */".to_string()),
         }
     }
 
