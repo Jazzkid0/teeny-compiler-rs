@@ -25,6 +25,19 @@ struct Label {
     used: bool,
 }
 
+fn print_unary(unary: Unary) -> String {
+    match unary {
+        Unary::Plus(primary) => match *primary {
+            Primary::Ident(ident) => format!("{}", ident),
+            Primary::Number(number) => format!("{}", number),
+        },
+        Unary::Minus(primary) => match *primary {
+            Primary::Ident(ident) => format!("-{}", ident),
+            Primary::Number(number) => format!("-{}", number),
+        },
+    }
+}
+
 fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn Error>> {
     let mut code_header: Vec<String> = Vec::new();
     let mut code_body: Vec<String> = Vec::new();
@@ -38,18 +51,27 @@ fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn Error
             Statement::PrintExpression(expression) => match *expression {
                 Expression::SingleTerm(term) => match *term {
                     Term::SingleUnary(unary) => match *unary {
-                        Unary::Plus(primary) => {
-                            code_body.push("/* unimplemented unary plus */".to_string())
-                        }
-                        Unary::Minus(primary) => {
-                            code_body.push("/* unimplemented unary minus */".to_string())
-                        }
+                        Unary::Plus(primary) => match *primary {
+                            Primary::Ident(ident) => {
+                                code_body.push(format!("printf(\"%d\\n\", {});", ident))
+                            }
+                            Primary::Number(number) => {
+                                code_body.push(format!("printf(\"%d\\n\", {});", number))
+                            }
+                        },
+                        Unary::Minus(primary) => match *primary {
+                            Primary::Ident(ident) => {
+                                code_body.push(format!("printf(\"%d\\n\", -{});", ident))
+                            }
+                            Primary::Number(number) => {
+                                code_body.push(format!("printf(\"%d\\n\", -{});", number))
+                            }
+                        },
                     },
-                    Term::WithTail(unary, tailunaries) => {
-                        code_body.push("/* unimplemented term with tail */".to_string())
-                    }
+                    Term::WithTail(unary, tailunaries) => {}
                 },
                 Expression::WithTail(term, tailterms) => {
+
                     code_body.push("/* unimplemented expression with tail */".to_string())
                 }
             },
