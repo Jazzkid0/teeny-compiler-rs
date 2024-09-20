@@ -81,7 +81,7 @@ pub fn lex(input: &str) -> Result<Vec<Token>, Box<dyn Error>> {
                         name.push(chars.next().unwrap());
                     }
 
-                    match name.as_str() {
+                    match name.to_lowercase().as_str() {
                         "label" => tokens.push(Token::Label { name }),
                         "goto" => tokens.push(Token::Goto),
                         "print" => tokens.push(Token::Print),

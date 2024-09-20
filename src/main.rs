@@ -31,11 +31,15 @@ fn main() {
         Command::Compile { path } => {
             let input = fs::read_to_string(path).unwrap();
             println!("{}", input);
+            print!("Lexing... ");
             let lex_out = lexer::lex(&input).unwrap();
+            print!("OK!\nParsing... ");
             let mut token_iterator = lexer::TokenIterator::new(&lex_out).peekable();
             let parse_out = parser::parse(&mut token_iterator).unwrap();
             let parser::AST::Program(statements) = parse_out;
+            print!("OK!\nEmitting... ");
             let output = emitter::emit_program(statements).unwrap();
+            print!("OK!\nOutput: ");
             for line in output {
                 println!("{}", line);
             }

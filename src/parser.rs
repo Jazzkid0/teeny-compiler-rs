@@ -205,7 +205,7 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
             }
             _ => {
                 return Err(format!(
-                    "Unexpected token at AST: {:?}\nAST State: {:?}",
+                    "Unexpected token at AST: {:?} \nAST State: {:?}",
                     token,
                     AST::Program(statements)
                 )
