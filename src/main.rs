@@ -25,21 +25,22 @@ enum Command {
 
 fn main() {
     let args = Cli::parse();
-    let target_dir = "./tinycode/";
+    let _target_dir = "./tinycode/";
 
     match args.command {
         Command::Compile { path } => {
             let input = fs::read_to_string(path).unwrap();
+            println!("Input:");
             println!("{}", input);
             print!("Lexing... ");
             let lex_out = lexer::lex(&input).unwrap();
             print!("OK!\nParsing... ");
             let mut token_iterator = lexer::TokenIterator::new(&lex_out).peekable();
             let parse_out = parser::parse(&mut token_iterator).unwrap();
-            let parser::AST::Program(statements) = parse_out;
+            let parser::Ast::Program(statements) = parse_out;
             print!("OK!\nEmitting... ");
             let output = emitter::emit_program(statements).unwrap();
-            print!("OK!\nOutput: ");
+            println!("OK!\n\nOutput:");
             for line in output {
                 println!("{}", line);
             }

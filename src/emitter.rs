@@ -43,7 +43,7 @@ pub fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn E
     let mut code_body: Vec<String> = Vec::new();
 
     code_header.push("#include <stdio.h>".to_string());
-    code_header.push("int main(void){\n".to_string());
+    code_header.push("int main(void){".to_string());
 
     for statement in statements {
         match statement {
@@ -68,10 +68,11 @@ pub fn emit_program(statements: Vec<Statement>) -> Result<Vec<String>, Box<dyn E
                             }
                         },
                     },
-                    Term::WithTail(_unary, _tailunaries) => {}
+                    Term::WithTail(_unary, _tailunaries) => {
+                        code_body.push("/* unimplemented term with tail */".to_string())
+                    }
                 },
                 Expression::WithTail(_term, _tailterms) => {
-
                     code_body.push("/* unimplemented expression with tail */".to_string())
                 }
             },

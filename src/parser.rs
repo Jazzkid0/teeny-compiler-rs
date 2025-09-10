@@ -22,7 +22,7 @@ use std::error::Error;
 use std::iter::Peekable;
 
 #[derive(Debug, PartialEq)]
-pub enum AST {
+pub enum Ast {
     Program(Vec<Statement>),
 }
 
@@ -104,7 +104,7 @@ pub enum Primary {
     Ident(String),
 }
 
-pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>> {
+pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<Ast, Box<dyn Error>> {
     let mut statements = vec![];
     while let Some(token) = tokens.next() {
         println!("AST--- Parsing token: {:?}", token);
@@ -207,13 +207,13 @@ pub fn parse(tokens: &mut Peekable<TokenIterator>) -> Result<AST, Box<dyn Error>
                 return Err(format!(
                     "Unexpected token at AST: {:?} \nAST State: {:?}",
                     token,
-                    AST::Program(statements)
+                    Ast::Program(statements)
                 )
                 .into())
             }
         }
     }
-    Ok(AST::Program(statements))
+    Ok(Ast::Program(statements))
 }
 
 fn parse_statement(tokens: &mut Peekable<TokenIterator>) -> Result<Statement, Box<dyn Error>> {
@@ -475,7 +475,7 @@ input x
 
         assert_eq!(
             ast,
-            AST::Program(vec![
+            Ast::Program(vec![
                 Statement::PrintString("waddup".to_string()),
                 Statement::If {
                     comparison: Comparison::Equal(
